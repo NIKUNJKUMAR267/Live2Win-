@@ -21,6 +21,15 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Prepare www folder
+        run: |
+          mkdir -p www
+          cp index.html www/index.html
+          cp manifest.json www/manifest.json
+          cp sw.js www/sw.js
+          cp icon-192.png www/icon-192.png
+          cp icon-512.png www/icon-512.png
+
       - name: Install Capacitor
         run: |
           npm init -y
@@ -28,8 +37,9 @@ jobs:
 
       - name: Init Capacitor
         run: |
-          npx cap init Live2Win com.live2win.app --web-dir .
+          npx cap init Live2Win com.live2win.app --web-dir www
           npx cap add android
+          npx cap sync android
 
       - name: Build APK
         run: |
