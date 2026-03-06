@@ -10,40 +10,113 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Prepare www folder
-        run: |
-          mkdir -p www
-          cp index.html www/index.html
-          cp manifest.json www/manifest.json
-          cp sw.js www/sw.js
-          cp icon-192.png www/icon-192.png
-          cp icon-512.png www/icon-512.png
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.4'
 
-      - name: Install Capacitor
+      - name: Create Project Structure
         run: |
-          npm init -y
-          npm install @capacitor/core @capacitor/cli @capacitor/android
+          mkdir -p app/src/main/java/com/live2win/app
+          mkdir -p app/src/main/res/drawable
+          mkdir -p app/src/main/assets
+          cp index.html app/src/main/assets/
+          cp icon-512.png app/src/main/res/drawable/ic_launcher.png 2>/dev/null || true
 
-      - name: Init Capacitor
+      - name: Create settings.gradle
         run: |
-          npx cap init Live2Win com.live2win.app --web-dir www
-          npx cap add android
-          npx cap sync android
+          cat > settings.gradle << 'EOF'
+rootProject.name = "Live2Win"
+include ':app'
+EOF
+
+      - name: Create build.gradle
+        run: |
+          cat > build.gradle << 'EOF'
+buildscript {
+    repositories { google(); mavenCentral() }
+    dependencies { classpath 'com.android.tools.build:gradle:8.1.0' }
+}
+allprojects { repositories { google(); mavenCentral() } }
+EOF
+
+      - name: Create app build.gradle
+        run: |
+          cat > app/build.gradle << 'EOF'
+apply plugin: 'com.android.application'
+android {
+    compileSdkVersion 34
+    defaultConfig {
+        applicationId "com.live2win.app"
+        minSdkVersion 21
+        targetSdkVersion 34
+        versionCode 1
+        versionName "1.0"
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+EOF
+
+      - name: Create AndroidManifest
+        run: |
+          cat > app/src/main/AndroidManifest.xml << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.live2win.app">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <application
+        android:label="Live2Win"
+        android:usesCleartextTraffic="true">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+EOF
+
+      - name: Create MainActivity
+        run: |
+          cat > app/src/main/java/com/live2win/app/MainActivity.java << 'EOF'
+package com.live2win.app;
+import android.app.Activity;
+import android.os.Bundle;
+import android.webkit.*;
+public class MainActivity extends Activity {
+    WebView w;
+    @Override
+    protected void onCreate(Bundle b) {
+        super.onCreate(b);
+        w = new WebView(this);
+        w.getSettings().setJavaScriptEnabled(true);
+        w.getSettings().setDomStorageEnabled(true);
+        w.getSettings().setAllowFileAccessFromFileURLs(true);
+        w.getSettings().setAllowUniversalAccessFromFileURLs(true);
+        w.setWebViewClient(new WebViewClient());
+        w.loadUrl("file:///android_asset/index.html");
+        setContentView(w);
+    }
+    @Override public void onBackPressed() {
+        if (w.canGoBack()) w.goBack();
+        else super.onBackPressed();
+    }
+}
+EOF
 
       - name: Build APK
         run: |
-          cd android
+          gradle wrapper --gradle-version=8.4
           chmod +x gradlew
           ./gradlew assembleDebug
 
@@ -51,4 +124,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: live2win-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/debug/*.apk
